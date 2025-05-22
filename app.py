@@ -128,7 +128,7 @@ st.title("📊 Journal Impact Factor and SJR Quartile Matcher")
 
 # Load reference data from GitHub URL
 try:
-    reference_file_url = "https://github.com/Satyajeet1396/ifq/raw/90057686057c21c7aaff527c1a58dfc644587fbd/ifq.xlsx"
+    reference_file_url = "https://github.com/Satyajeet1396/ifq/blob/b967bc6aa011ba6f840e480c1eb1d1739e0c4842/ifq.xlsx"
     r = requests.get(reference_file_url)
     ref_df = pd.read_excel(BytesIO(r.content), engine='openpyxl')
     st.success(f"✅ Loaded reference database with {len(ref_df)} journals.")
