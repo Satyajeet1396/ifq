@@ -7,6 +7,7 @@ from io import BytesIO
 from functools import lru_cache
 from tqdm import tqdm
 import requests
+import matplotlib.pyplot as plt
 
 # Abbreviations mapping
 JOURNAL_REPLACEMENTS = {
@@ -95,6 +96,28 @@ def process_single_file(user_df, ref_df):
     good = len(results_df[(results_df['Match Score'] >= 90) & (results_df['Match Score'] < 100)])
     no = len(results_df[results_df['Match Score'] == 0])
     st.write(f"- Total: {total}, Perfect: {perfect}, Good: {good}, No Match: {no}")
+
+    # Additional analysis
+    numeric_jif = pd.to_numeric(results_df['JIF'], errors='coerce')
+    st.write(f"- Average JIF: {numeric_jif.dropna().mean():.2f}")
+    st.write(f"- Max JIF: {numeric_jif.max():.2f}")
+    st.write(f"- Min JIF: {numeric_jif.min():.2f}")
+
+    # Histogram of JIF
+    st.write("### 📊 Impact Factor Distribution")
+    fig, ax = plt.subplots()
+    numeric_jif.dropna().plot.hist(bins=15, color='skyblue', edgecolor='black', ax=ax)
+    ax.set_title("Impact Factor Histogram")
+    ax.set_xlabel("Impact Factor")
+    st.pyplot(fig)
+
+    # Pie chart of Quartiles
+    st.write("### 🥧 SJR Quartile Distribution")
+    quartile_counts = results_df['SJR Best Quartile'].value_counts()
+    fig2, ax2 = plt.subplots()
+    quartile_counts.plot.pie(autopct='%1.1f%%', startangle=140, colors=plt.cm.Pastel1.colors, ax=ax2)
+    ax2.set_ylabel('')
+    st.pyplot(fig2)
 
     final_df = pd.concat([user_df, results_df], axis=1).sort_values(by='Match Score')
     final_df.attrs['new_columns'] = new_columns
