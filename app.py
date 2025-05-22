@@ -75,14 +75,22 @@ def process_single_file(user_df, ref_df):
     # Create a copy of journal names for processing
     journals = user_df[source_title_col].astype(str).apply(standardize_text)
     
-    # Create reference dictionary
+    # Create reference dictionary with both SJR Best Quartile and JIF values
     ref_dict = {}
     ref_df.iloc[:, 0] = ref_df.iloc[:, 0].astype(str).apply(standardize_text)  # Standardize reference journal names
     
-    for journal, impact in zip(ref_df.iloc[:, 0], ref_df.iloc[:, 1]):
+    # Assuming ref_df has columns: [Journal Name, SJR Best Quartile, JIF]
+    # If not, adjust the column indices accordingly
+    for i, row in ref_df.iterrows():
+        journal = row.iloc[0]  # Journal name
+        sjr = row.iloc[1] if len(row) > 1 else "N/A"  # SJR Best Quartile
+        jif = row.iloc[2] if len(row) > 2 else "N/A"  # JIF
+        
         if journal not in ref_dict:
-            ref_dict[journal] = []
-        ref_dict[journal].append(impact)
+            ref_dict[journal] = {"sjr": [], "jif": []}
+        
+        ref_dict[journal]["sjr"].append(sjr)
+        ref_dict[journal]["jif"].append(jif)
     
     ref_journals = ref_df.iloc[:, 0].tolist()
     journal_list = journals.tolist()
@@ -90,21 +98,34 @@ def process_single_file(user_df, ref_df):
     results = []
     for journal in tqdm(journal_list, desc="Processing journals"):
         if pd.isna(journal) or str(journal).strip() == "":
-            results.append(("No journal name", "No match found", 0, ""))
+            results.append((journal, "No match found", 0, "N/A", "N/A"))
             continue
             
         if journal in ref_dict:
-            results.append((journal, journal, 100, ', '.join(map(str, ref_dict[journal]))))
+            results.append((
+                journal, 
+                journal, 
+                100, 
+                ', '.join(map(str, ref_dict[journal]["sjr"])), 
+                ', '.join(map(str, ref_dict[journal]["jif"]))
+            ))
             continue
             
         match = process.extractOne(journal, ref_journals, scorer=fuzz.ratio, score_cutoff=90)
         if match:
-            results.append((journal, match[0], match[1], ', '.join(map(str, ref_dict[match[0]]))))
+            matched_journal = match[0]
+            results.append((
+                journal, 
+                matched_journal, 
+                match[1], 
+                ', '.join(map(str, ref_dict[matched_journal]["sjr"])), 
+                ', '.join(map(str, ref_dict[matched_journal]["jif"]))
+            ))
         else:
-            results.append((journal, "No match found", 0, ""))
+            results.append((journal, "No match found", 0, "N/A", "N/A"))
     
-    # Create DataFrame with match results
-    new_columns = ['Processed Journal Name', 'Best Match', 'Match Score', 'Impact Factor']
+    # Create DataFrame with match results including SJR and JIF
+    new_columns = ['Processed Journal Name', 'Best Match', 'Match Score', 'SJR Best Quartile', 'JIF']
     results_df = pd.DataFrame(results, columns=new_columns)
     
     # Print matching statistics
@@ -120,7 +141,6 @@ def process_single_file(user_df, ref_df):
     - Good matches (90-99): {good_matches} ({good_matches/total*100:.1f}%)
     - No matches: {no_matches} ({no_matches/total*100:.1f}%)
     """)
-    
     
     # Add processed journal name and match results
     final_df = pd.concat([
@@ -148,19 +168,34 @@ def save_results(df, file_format='xlsx'):
         workbook = writer.book
         worksheet = writer.sheets['Sheet1']
         
-        # Create fill style for new columns
+        # Create fill styles for different columns
         header_fill = PatternFill(start_color='0066CC',
                                 end_color='0066CC',
                                 fill_type='solid')
         
+        sjr_fill = PatternFill(start_color='00CC66',
+                             end_color='00CC66',
+                             fill_type='solid')
+                             
+        jif_fill = PatternFill(start_color='FF9900',
+                             end_color='FF9900',
+                             fill_type='solid')
+        
         # Get new column names from DataFrame attributes
         new_columns = df.attrs.get('new_columns', [])
         
-        # Apply highlighting to new column headers
+        # Apply highlighting to column headers
         for cell in worksheet[1]:
             if cell.value in new_columns:
-                cell.fill = header_fill
-                cell.font = Font(color='FFFFFF', bold=True)
+                if cell.value == 'SJR Best Quartile':
+                    cell.fill = sjr_fill
+                    cell.font = Font(color='000000', bold=True)
+                elif cell.value == 'JIF':
+                    cell.fill = jif_fill
+                    cell.font = Font(color='000000', bold=True)
+                else:
+                    cell.fill = header_fill
+                    cell.font = Font(color='FFFFFF', bold=True)
         
         # Save the workbook
         writer.close()
@@ -172,7 +207,7 @@ def save_results(df, file_format='xlsx'):
     return output
 
 # Streamlit app
-st.title("Multi-File Journal Impact Factor Processor")
+st.title("Journal Impact Factor and SJR Quartile Processor")
 
 # Add collapsible app information
 with st.expander("ℹ️ Click here to learn about this app", expanded=False):
@@ -195,11 +230,12 @@ with st.expander("ℹ️ Click here to learn about this app", expanded=False):
         </style>
         <div class="app-info">
         <h3>📚 About This App</h3>
-        <p>This app helps you find impact factors for your journal lists. It can:</p>
+        <p>This app helps you find impact factors and SJR quartiles for your journal lists. It can:</p>
         <ul>
         <li>Process multiple Excel/CSV files at once</li>
         <li>Automatically finds the 'Source title' column in your data</li>
         <li>Handle journal name variations and abbreviations</li>
+        <li>Display both SJR Best Quartile and JIF values</li>
         <li>Sort results by match quality (poorest matches first)</li>
         <li>Preserves all original columns and adds match results at the end</li>
         </ul>
@@ -292,9 +328,22 @@ if uploaded_files:
                     key=f"download_{file_id}"
                 )
                 
-                # Show sample results
+                # Show sample results with focus on SJR and JIF columns
                 st.write(f"Sample results:")
-                st.dataframe(data['results_df'].head())
+                
+                # Display a subset of columns with SJR and JIF highlighted
+                display_cols = ['Processed Journal Name', 'Best Match', 'Match Score', 'SJR Best Quartile', 'JIF']
+                
+                # Check if these columns exist in the results
+                available_cols = [col for col in display_cols if col in data['results_df'].columns]
+                
+                # Display the dataframe with the available columns
+                st.dataframe(data['results_df'][available_cols].head())
+                
+                # Add a specific section to highlight SJR and JIF values
+                st.write("### SJR Best Quartile and JIF Values")
+                sjr_jif_df = data['results_df'][['Best Match', 'SJR Best Quartile', 'JIF']].head(10)
+                st.dataframe(sjr_jif_df, use_container_width=True)
     
     # Add a button to clear processed files and start fresh
     if st.button("Clear All and Process New Files"):
