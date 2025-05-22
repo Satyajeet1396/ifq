@@ -11,3 +11,4 @@ seaborn
 fuzzywuzzy
 python-Levenshtein
 requests
+matplotlib
