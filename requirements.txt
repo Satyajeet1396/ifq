@@ -1,0 +1,12 @@
+streamlit
+pandas
+openpyxl
+rapidfuzz
+qrcode
+tqdm
+rapidfuzz
+xlsxwriter
+matplotlib
+seaborn
+fuzzywuzzy
+python-Levenshtein
